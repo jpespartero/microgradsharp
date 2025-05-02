@@ -2,28 +2,31 @@ namespace MicroGradSharp
 {
     public class Value
     {
+        
+        // For topological sorting in backward pass
+        private bool _visited = false;
 
         #region Properties
 
         /// <summary>
-        /// 
+        /// The scalar value stored in this node
         /// </summary>
         public double Data { get; }
 
         /// <summary>
-        /// 
+        /// The gradient of the loss with respect to this value
         /// </summary>
         public double Grad { get; set; }
 
         /// <summary>
-        /// 
+        /// Optional label for this value node
         /// </summary>
         public string Label { get; set; }
 
         /// <summary>
-        /// 
+        /// Function to compute gradients during backpropagation
         /// </summary>
-        public Func<double>? Backguards { get; set; }
+        public Func<double>? BackwardFunction { get; set; }
         
         /// <summary>
         /// Previous values in the computation graph.
@@ -31,7 +34,7 @@ namespace MicroGradSharp
         public Value[] Previous { get; }
 
         /// <summary>
-        /// 
+        /// The operation that created this value
         /// </summary>
         public Operation Operation { get; }    
 
@@ -106,24 +109,47 @@ namespace MicroGradSharp
 
         public void Backward()
         {
-            // Implement the backward pass logic here
-            // This is a placeholder for the actual backward pass implementation
-            if (Backguards != null)
+            // Initialize gradient of output node to 1.0
+            Grad = 1.0;
+            
+            // Build topological ordering of nodes
+            var topo = new List<Value>();
+            BuildTopo(this, topo);
+            
+            // Process nodes in reverse order (from outputs to inputs)
+            foreach (var node in topo)
             {
-                double result = Backguards();
-                foreach (var prev in Previous)
-                {
-                    prev.Backward();
-                }
+                // Apply the backward function to compute gradients
+                node.BackwardFunction?.Invoke();
             }
         }
-        
+        /// <summary>
+        /// Builds a topological ordering of the computation graph
+        /// </summary>
+        private void BuildTopo(Value v, List<Value> topo, HashSet<Value> visited = null)
+        {
+            visited ??= new HashSet<Value>();
+            
+            if (visited.Contains(v))
+                return;
+                
+            visited.Add(v);
+            
+            // Visit all children before adding this node
+            foreach (var child in v.Previous)
+            {
+                BuildTopo(child, topo, visited);
+            }
+            
+            topo.Add(v);
+        }
+
         #region Activation Functions
 
         public Value Tanh()
         {
-            Value result = new Value(Math.Tanh(Data), [this], Operation.Tanh);
-            result.Backguards = () =>
+            Value result = new Value(Math.Tanh(Data), new[] { this }, Operation.Tanh);
+            result.BackwardFunction = () =>
             {
                 Grad += (1.0 - Math.Pow(result.Data, 2)) * result.Grad;
                 return result.Data;
@@ -134,9 +160,9 @@ namespace MicroGradSharp
         public Value Sigmoid()
         {
             Value result = new Value(1.0 / (1.0 + Math.Exp(-Data)), [this], Operation.Sigmoid);
-            result.Backguards = () =>
+            result.BackwardFunction = () =>
             {
-                Grad += (1.0 - result.Data) * result.Data * result.Grad;
+                Grad += (result.Data * (1.0 - result.Data)) * result.Grad;
                 return result.Data;
             };
             return result;
@@ -144,7 +170,7 @@ namespace MicroGradSharp
         public Value ReLU()
         {
             Value result = new Value(Math.Max(0.0, Data), [this], Operation.ReLU);
-            result.Backguards = () =>
+            result.BackwardFunction = () =>
             {
                 Grad += (Data > 0.0 ? 1.0 : 0.0) * result.Grad;
                 return result.Data;
@@ -175,7 +201,7 @@ namespace MicroGradSharp
         public static Value operator +(Value a, Value b)
         {
             Value result = new Value(a.Data + b.Data, [a, b], Operation.Add);
-            result.Backguards = () =>
+            result.BackwardFunction = () =>
             {
                 a.Grad += result.Grad;
                 b.Grad += result.Grad;
@@ -197,7 +223,7 @@ namespace MicroGradSharp
         public static Value operator *(Value a, Value b)
         {
             Value result = new Value(a.Data * b.Data, [a, b], Operation.Multiply);
-            result.Backguards = () =>
+            result.BackwardFunction = () =>
             {
                 a.Grad += b.Data * result.Grad;
                 b.Grad += a.Data * result.Grad;
@@ -228,17 +254,18 @@ namespace MicroGradSharp
 
         public static Value operator -(double a, Value b)
         {
-            return a + (-b);
+            return new Value(a) + (-b);
         }
 
         public static Value operator -(Value a, double b)
         {
             return a + (-b);
         }
+
         public static Value Pow(Value a, int power)
         {
-            Value result = new Value(Math.Pow(a.Data, power), [a, new Value(power)], Operation.Power);
-            result.Backguards = () =>
+            Value result = new Value(Math.Pow(a.Data, power), new[] { a }, Operation.Power);
+            result.BackwardFunction = () =>
             {
                 a.Grad += power * Math.Pow(a.Data, power-1) * result.Grad;
                 return result.Data;
@@ -253,19 +280,20 @@ namespace MicroGradSharp
 
         public static Value operator /(Value a, double b)
         {
-            return a / new Value(b);
+            return a * new Value(1.0 / b);
         }
 
         public static Value operator /(double a, Value b)
         {
             return a * Pow(b, -1);
         }
+
         public static Value Exp(Value a)
         {
-            Value result = new Value (Math.Exp(a.Data));
-            result.Backguards = () =>
+            Value result = new Value(Math.Exp(a.Data), [a], Operation.Exp);
+            result.BackwardFunction = () =>
             {
-                a.Grad += Math.Exp(a.Data) * result.Grad;
+                a.Grad += result.Data * result.Grad; // d/dx(e^x) = e^x
                 return result.Data;
             };
             return result;
