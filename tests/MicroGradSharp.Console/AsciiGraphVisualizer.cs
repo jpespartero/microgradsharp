@@ -26,7 +26,11 @@ namespace MicroGradSharp.Console
                 return;
                 
             visited.Add(node);
-            nodeMap[node] = $"[{idCounter++}]";
+            
+            // Use the node label if available, otherwise use an ID number
+            string identifier = !string.IsNullOrEmpty(node.Label) ? node.Label : idCounter.ToString();
+            nodeMap[node] = $"[{identifier}]";
+            idCounter++;
             
             if (node.Previous != null)
             {

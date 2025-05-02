@@ -120,22 +120,42 @@ namespace MicroGradSharp
         
         #region Activation Functions
 
-        public double Tanh()
+        public Value Tanh()
         {
-            return Math.Tanh(Data);
+            Value result = new Value(Math.Tanh(Data), [this], Operation.Tanh);
+            result.Backguards = () =>
+            {
+                Grad += (1.0 - Math.Pow(result.Data, 2)) * result.Grad;
+                return result.Data;
+            };
+            return result;
         }
-        public double Sigmoid()
+
+        public Value Sigmoid()
         {
-            return 1.0 / (1.0 + Math.Exp(-Data));
+            Value result = new Value(1.0 / (1.0 + Math.Exp(-Data)), [this], Operation.Sigmoid);
+            result.Backguards = () =>
+            {
+                Grad += (1.0 - result.Data) * result.Data * result.Grad;
+                return result.Data;
+            };
+            return result;
         }
-        public double ReLU()
+        public Value ReLU()
         {
-            return Math.Max(0.0, Data);
+            Value result = new Value(Math.Max(0.0, Data), [this], Operation.ReLU);
+            result.Backguards = () =>
+            {
+                Grad += (Data > 0.0 ? 1.0 : 0.0) * result.Grad;
+                return result.Data;
+            };
+            return result;
         }
 
         #endregion
 
         #region Arithmetic Operations
+        
         public static bool operator ==(Value? a, Value? b)
         {
             if (ReferenceEquals(a, b))

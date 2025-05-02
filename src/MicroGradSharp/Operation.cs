@@ -11,6 +11,10 @@ namespace MicroGradSharp
         Multiply,
         Power,
         Exp,
+        ReLU,
+        Sigmoid,
+        Tanh,
+        
     }
 
 }
